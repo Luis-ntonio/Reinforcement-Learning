@@ -2,3 +2,4 @@ venv/
 *.sql
 experiments/
 *.pth
+*.json

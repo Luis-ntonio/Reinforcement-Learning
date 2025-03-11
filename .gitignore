@@ -1,0 +1,4 @@
+venv/
+*.sql
+experiments/
+*.pth

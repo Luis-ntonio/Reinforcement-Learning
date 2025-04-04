@@ -71,7 +71,10 @@ class AssignmentEnv:
             for j in range(self.cols):
                 prod_idx = grid[i, j]
                 if prod_idx != -1:
-                    quantity = self.df.loc[prod_idx, 'UNDESTIMADAS']
+                    if prod_idx >= self.num_products:
+                        quantity = 0.0
+                    else:
+                        quantity = self.df.loc[prod_idx, 'UNDESTIMADAS']
                     reward += (- quantity * self.weight_matrix[i, j]) / scaling_factor
         
         # If collisions are too many, apply a huge penalty

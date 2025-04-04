@@ -38,7 +38,6 @@ class AssignmentCNNModel(tf.keras.Model):
         # matrix_input shape: (batch, rows, cols, matrix_channels)
         product_input, matrix_input = inputs
         batch_size = tf.shape(matrix_input)[0]
-        tf.print("Matrix input shape:", tf.shape(matrix_input))
         
         # Process matrix input to get cell embeddings.
         x = self.conv1(matrix_input)
@@ -54,7 +53,6 @@ class AssignmentCNNModel(tf.keras.Model):
         scores = tf.matmul(prod_emb, cell_emb, transpose_b=True)  # (batch, num_products, total_cells)
         assignment_probs = tf.nn.softmax(scores, axis=-1)  # probabilities for each product over cells
 
-        tf.print("Assignment probabilities:", assignment_probs.shape, summarize=-1)
         
         # For training we won't use tf.argmax, but we output assignment_probs.
         # Return both assignment_probs and (a preliminary assignments grid via tf.argmax for debugging).

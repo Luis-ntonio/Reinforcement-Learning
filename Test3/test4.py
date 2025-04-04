@@ -45,7 +45,7 @@ def unique_assignment(assignment_probs_np):
     return action_vector
 
 
-def one_step_policy_learning(env, policy_model, num_episodes, learning_rate=0.0005,
+def one_step_policy_learning(env: AssignmentEnv, policy_model, num_episodes, learning_rate=0.0005,
                              temperature_start=1.0, temperature_end=0.1, temperature_decay_steps=10000):
     optimizer = Adam(learning_rate=learning_rate)
     rewards_list = []
@@ -66,7 +66,7 @@ def one_step_policy_learning(env, policy_model, num_episodes, learning_rate=0.00
         _, assignment_probs = policy_model(state_batch)
         # assignment_probs shape: (1, num_products, total_cells)
         assignment_probs_np = assignment_probs.numpy().squeeze(0)  # (num_products, total_cells)
-        
+
         # Compute temperature (linearly decaying)
         temperature = max(temperature_end, temperature_start - (temperature_start - temperature_end) * global_step / temperature_decay_steps)
         
@@ -79,7 +79,6 @@ def one_step_policy_learning(env, policy_model, num_episodes, learning_rate=0.00
         
         # Use Hungarian algorithm to get unique assignment.
         action_vector = unique_assignment(adjusted_probs)  # action_vector shape: (num_products,)
-        
         # For policy gradient, compute the log-probabilities of the chosen actions.
         chosen_log_probs = []
         for i in range(adjusted_probs.shape[0]):

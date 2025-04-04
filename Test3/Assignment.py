@@ -22,20 +22,26 @@ class AssignmentEnv:
     
     def reset(self):
         self.fail_count = 0
-        # Compute product features from the DataFrame.
-        # For example, using the 'UNDESTIMADAS' column as a single feature:
-        product_features = self.df['UNDESTIMADAS'].values.astype(np.float32).reshape(-1, 1)
+        # Extract the 'UNDESTIMADAS' column as quantity.
+        # Also assume that your product ID can be derived from an index or a column (for example, 'PRODUCTO').
+        product_ids = self.df['PRODUCTO'].values  # shape: (num_products,)
+        quantities = self.df['UNDESTIMADAS'].values.astype(np.float32).reshape(-1, 1)  # shape: (num_products, 1)
+        # Combine them into a product feature array of shape (num_products, 2).
+        # You might need to convert product_ids to numeric form (or leave them as numbers).
+        product_ids = product_ids.astype(np.float32).reshape(-1, 1)
+        product_features = np.concatenate([product_ids, quantities], axis=1)
         
-        # Pad the product_features array if there are fewer products than grid cells.
+        # If necessary, pad product_features so its number of rows equals total_cells.
         if product_features.shape[0] < self.total_cells:
             pad_size = self.total_cells - product_features.shape[0]
             padding = np.zeros((pad_size, product_features.shape[1]), dtype=product_features.dtype)
             product_features = np.concatenate([product_features, padding], axis=0)
         
-        # Prepare the matrix input by adding a channel dimension.
-        matrix_input = self.weight_matrix.astype(np.float32)[..., np.newaxis]  # Shape: (rows, cols, 1)
+        # Prepare matrix input by adding a channel dimension.
+        matrix_input = self.weight_matrix.astype(np.float32)[..., np.newaxis]
         
         return product_features, matrix_input
+
     
     def step(self, action):
         """

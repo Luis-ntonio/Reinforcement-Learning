@@ -38,9 +38,9 @@ def build_index_batch(actions):
 
 
 def train_double_dqn(env: AssignmentEnv, q_network, target_network, num_episodes=1000, gamma=0.99,
-                     lr=1e-4, batch_size=64, buffer_capacity=10000,
+                     lr=5e-5, batch_size=64, buffer_capacity=10000,
                      epsilon_start=1.0, epsilon_end=0.1, epsilon_decay=0.98,
-                     target_update_freq=10):
+                     target_update_freq=20):
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
     replay_buffer = ReplayBuffer(buffer_capacity)
@@ -197,7 +197,7 @@ if __name__ == "__main__":
 
         target_net.set_weights(q_net.get_weights())
 
-        rewards = train_double_dqn(env, q_net, target_net, num_episodes=200)
+        rewards = train_double_dqn(env, q_net, target_net, num_episodes=1000)
 
         import matplotlib.pyplot as plt
 

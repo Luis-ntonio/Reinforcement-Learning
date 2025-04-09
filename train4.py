@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import os
 import dotenv
 dotenv.load_dotenv()
@@ -24,10 +25,11 @@ def epsilon_greedy_action(q_values, epsilon, total_cells):
 def epsilon_greedy_action_soft(q_values, epsilon, total_cells):
     flg_use_epsilon = False
     if np.random.rand() < epsilon:
-        return np.random.randint(total_cells, size=q_values.shape[0]), flg_use_epsilon
+        return np.random.randint(total_cells, size=q_values.shape[0]), True
     else:
         # Apply softmax to each product's q-values and sample
-        probabilities = tf.nn.softmax(q_values, axis=-1).numpy()
+        logits = q_values - np.max(q_values, axis=-1, keepdims=True)
+        probabilities = tf.nn.softmax(logits, axis=-1).numpy()
         actions = [np.random.choice(total_cells, p=prob) for prob in probabilities]
         return np.array(actions), flg_use_epsilon
 
@@ -39,7 +41,7 @@ def build_index_batch(actions):
 
 def train_double_dqn(env: AssignmentEnv, q_network, target_network, num_episodes=1000, gamma=0.99,
                      lr=5e-5, batch_size=64, buffer_capacity=10000,
-                     epsilon_start=1.0, epsilon_end=0.1, epsilon_decay=0.98,
+                     epsilon_start=1.0, epsilon_end=0.01, epsilon_decay=0.998,
                      target_update_freq=20):
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
@@ -147,6 +149,16 @@ def train_double_dqn(env: AssignmentEnv, q_network, target_network, num_episodes
         )
         rewards_list.append([reward, items_placed, placed_estimated_sales, loss_value, flg_use_epsilon])
 
+    alpha = env.alpha
+    beta = env.beta
+    gamma = env.gamma
+    delta = env.delta
+    theta = env.theta
+
+    plt.hist(q_values.numpy().flatten(), bins=100)
+    plt.title("Distribución de Q-values")
+    plt.savefig(f"./experiments/q_values/DoubleDQN_q_values_plot_alpha_{alpha}_beta_{beta}_gamma_{gamma}_delta_{delta}_theta_{theta}.png")
+    plt.close()
     return rewards_list
 
 import itertools
@@ -197,9 +209,8 @@ if __name__ == "__main__":
 
         target_net.set_weights(q_net.get_weights())
 
-        rewards = train_double_dqn(env, q_net, target_net, num_episodes=1000)
+        rewards = train_double_dqn(env, q_net, target_net, num_episodes=200)
 
-        import matplotlib.pyplot as plt
 
         # Plot rewards
         plt.plot([r[0] for r in rewards])
@@ -245,3 +256,5 @@ if __name__ == "__main__":
         plt.grid()
         plt.savefig(f"./experiments/epsilon_usage/DoubleDQN_epsilon_usage_plot_alpha_{alpha}_beta_{beta}_gamma_{gamma}_delta_{delta}_theta_{theta}.png")
         plt.close()
+
+        

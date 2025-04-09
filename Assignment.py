@@ -82,9 +82,15 @@ class AssignmentEnv:
 
         unplaced_items = self.num_products - placed_items
 
-        reward = ((self.alpha * weighted_sales + self.theta * placed_items) - self.beta * collisions - self.gamma * unplaced_items - self.delta * misplaced_penalty) / self.total_cells
+        reward = (
+            self.alpha * (weighted_sales / (self.num_products + 1e-6)) +
+            self.theta * (placed_items / self.total_cells) -
+            self.beta * (collisions / self.total_cells) -
+            self.gamma * (unplaced_items / self.total_cells) -
+            self.delta * (misplaced_penalty / self.num_products)
+        )
 
-        #reward = np.clip(reward, -1000, 500)
+        reward = np.clip(reward, -1.0, 1.0)
 
         self.last_placed_items = placed_items
         done = True

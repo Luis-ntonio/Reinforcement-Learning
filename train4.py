@@ -1,11 +1,18 @@
+import os
+import dotenv
+dotenv.load_dotenv()
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TensorFlow warnings
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_XLA_FLAGS'] = '--tf_xla_auto_jit=0'
 import numpy as np
 import tensorflow as tf
 from tqdm import trange
-import os
 import pandas as pd
 from Assignment import AssignmentEnv
 from Dueling_CNN import AssignmentCNNModel
 from ReplayBuffer import ReplayBuffer
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module='tensorflow')
 
 
 def epsilon_greedy_action(q_values, epsilon, total_cells):
@@ -14,15 +21,25 @@ def epsilon_greedy_action(q_values, epsilon, total_cells):
     else:
         return np.argmax(q_values, axis=-1)
 
+def epsilon_greedy_action_soft(q_values, epsilon, total_cells):
+    flg_use_epsilon = False
+    if np.random.rand() < epsilon:
+        return np.random.randint(total_cells, size=q_values.shape[0]), flg_use_epsilon
+    else:
+        # Apply softmax to each product's q-values and sample
+        probabilities = tf.nn.softmax(q_values, axis=-1).numpy()
+        actions = [np.random.choice(total_cells, p=prob) for prob in probabilities]
+        return np.array(actions), flg_use_epsilon
+
 
 def build_index_batch(actions):
     batch_indices = tf.range(tf.shape(actions)[0])
     return tf.stack([batch_indices, actions], axis=1)
 
 
-def train_double_dqn(env, q_network, target_network, num_episodes=1000, gamma=0.99,
+def train_double_dqn(env: AssignmentEnv, q_network, target_network, num_episodes=1000, gamma=0.99,
                      lr=1e-4, batch_size=64, buffer_capacity=10000,
-                     epsilon_start=1.0, epsilon_end=0.1, epsilon_decay=0.995,
+                     epsilon_start=1.0, epsilon_end=0.1, epsilon_decay=0.98,
                      target_update_freq=10):
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
@@ -48,7 +65,7 @@ def train_double_dqn(env, q_network, target_network, num_episodes=1000, gamma=0.
 
         _, q_values = q_network(batch_input)
         q_values = q_values.numpy()[0]
-        action_vector = epsilon_greedy_action(q_values, epsilon, env.total_cells)
+        action_vector, flg_use_epsilon = epsilon_greedy_action_soft(q_values, epsilon, env.total_cells)
 
         grid, reward, done, _, placed_estimated_sales = env.step(action_vector)
         items_placed = np.sum(grid != -1)
@@ -91,7 +108,8 @@ def train_double_dqn(env, q_network, target_network, num_episodes=1000, gamma=0.
                 next_actions = tf.argmax(next_q_values, axis=-1)
 
                 _, target_q_values = target_network(next_state_input)
-                num_products = tf.shape(next_actions)[1]
+                num_products = tf.shape(next_actions)[1].numpy()
+                batch_size = tf.shape(next_actions)[0].numpy()
 
                 batch_idx = tf.range(batch_size, dtype=tf.int32)
                 product_idx = tf.range(num_products, dtype=tf.int32)
@@ -122,12 +140,12 @@ def train_double_dqn(env, q_network, target_network, num_episodes=1000, gamma=0.
             target_network.set_weights(q_network.get_weights())
 
         epsilon = max(epsilon * epsilon_decay, epsilon_end)
-        rewards_list.append(reward)
 
         tr.set_description(
-            f"Ep {episode+1} | Reward: {reward:.2f} | Placed: {items_placed} | Sales: {placed_estimated_sales:.1f} | Loss: {loss_value:.4f}" 
+            f"Ep {episode+1} | epsilon: {epsilon:2f} | use epsilon: {flg_use_epsilon} | Reward: {reward:.2f} | Placed: {items_placed} | Sales: {placed_estimated_sales:.1f} | Loss: {loss_value:.4f}" 
             if loss_value is not None else f"Ep {episode+1}"
         )
+        rewards_list.append([reward, items_placed, placed_estimated_sales, loss_value, flg_use_epsilon])
 
     return rewards_list
 
@@ -138,9 +156,10 @@ alpha_vals = [10.0, 50.0, 100.0]
 beta_vals = [0.5, 1.0]
 gamma_vals = [0.5, 1.0]
 delta_vals = [0.5, 1.0]
+theta_vals = [0.2, 0.7, 2.0]
 
 if __name__ == "__main__":
-    file_path = 'productos_anaquel.xls'
+    file_path = 'productos_anaquel.xlsx'
     df_list = []
     i = 1
     try:
@@ -152,18 +171,19 @@ if __name__ == "__main__":
 
     df_all = pd.concat(df_list, ignore_index=True)
     df_all = df_all[df_all['ANAQUEL'].str.startswith('C', na=False)]
-    df_by_campa = [df_all[df_all['CAMPA'] == campa] for campa in df_all['CAMPA'].unique()]
+    df_by_campa = [df_all[df_all['CAMPA'] == campa].copy() for campa in df_all['CAMPA'].unique()]
+
 
     for i, df in enumerate(df_by_campa):
-        df['UNDESTIMADAS'] = df['UNDESTIMADAS'].apply(lambda x: x if x > 0 else 1)
+        df.loc[df['UNDESTIMADAS'] <= 0, 'UNDESTIMADAS'] = 1
         df.reset_index(drop=True, inplace=True)
-        df['PRODUCTO_NORM'] = (df['PRODUCTO'] - df['PRODUCTO'].min()) / (df['PRODUCTO'].max() - df['PRODUCTO'].min())
-        df['UNDESTIMADAS_NORM'] = (df['UNDESTIMADAS'] - df['UNDESTIMADAS'].min()) / (df['UNDESTIMADAS'].max() - df['UNDESTIMADAS'].min())
+        df.loc[:, 'PRODUCTO_NORM'] = (df['PRODUCTO'] - df['PRODUCTO'].min()) / (df['PRODUCTO'].max() - df['PRODUCTO'].min())
+        df.loc[:, 'UNDESTIMADAS_NORM'] = (df['UNDESTIMADAS'] - df['UNDESTIMADAS'].min()) / (df['UNDESTIMADAS'].max() - df['UNDESTIMADAS'].min())
         df = df[['PRODUCTO_NORM', 'UNDESTIMADAS_NORM']]
         df_by_campa[i] = df
 
-    for alpha, beta, gamma, delta in tqdm(list(itertools.product(alpha_vals, beta_vals, gamma_vals, delta_vals))):
-        env = AssignmentEnv(df_by_campa, alpha=alpha, beta=beta, gamma=gamma, delta=delta)
+    for alpha, beta, gamma, delta, theta in tqdm(list(itertools.product(alpha_vals, beta_vals, gamma_vals, delta_vals, theta_vals))):
+        env = AssignmentEnv(df_by_campa, alpha=alpha, beta=beta, gamma=gamma, delta=delta, theta=theta)
         q_net = AssignmentCNNModel(env.rows, env.cols, product_feature_dim=2, matrix_channels=1, embed_dim=256)
         target_net = AssignmentCNNModel(env.rows, env.cols, product_feature_dim=2, matrix_channels=1, embed_dim=256)
 
@@ -177,12 +197,51 @@ if __name__ == "__main__":
 
         target_net.set_weights(q_net.get_weights())
 
-        rewards = train_double_dqn(env, q_net, target_net, num_episodes=1000)
+        rewards = train_double_dqn(env, q_net, target_net, num_episodes=200)
 
-    import matplotlib.pyplot as plt
-    plt.plot(rewards)
-    plt.title("Reward per episode - Double DQN")
-    plt.xlabel("Episode")
-    plt.ylabel("Reward")
-    plt.grid()
-    plt.savefig("./experiments/DoubleDQN_reward_plot.png")
+        import matplotlib.pyplot as plt
+
+        # Plot rewards
+        plt.plot([r[0] for r in rewards])
+        plt.title(f"Reward per episode - Double DQN\nAlpha: {alpha}, Beta: {beta}, Gamma: {gamma}, Delta: {delta}, Theta: {theta}")
+        plt.xlabel("Episode")
+        plt.ylabel("Reward")
+        plt.grid()
+        plt.savefig(f"./experiments/reward/DoubleDQN_reward_plot_alpha_{alpha}_beta_{beta}_gamma_{gamma}_delta_{delta}_theta_{theta}.png")
+        plt.close()
+
+        # Plot items placed
+        plt.plot([r[1] for r in rewards])
+        plt.title(f"Items Placed per episode - Double DQN\nAlpha: {alpha}, Beta: {beta}, Gamma: {gamma}, Delta: {delta}, Theta: {theta}")
+        plt.xlabel("Episode")
+        plt.ylabel("Items Placed")
+        plt.grid()
+        plt.savefig(f"./experiments/items_placed/DoubleDQN_items_placed_plot_alpha_{alpha}_beta_{beta}_gamma_{gamma}_delta_{delta}_theta_{theta}.png")
+        plt.close()
+
+        # Plot placed estimated sales
+        plt.plot([r[2] for r in rewards])
+        plt.title(f"Placed Estimated Sales per episode - Double DQN\nAlpha: {alpha}, Beta: {beta}, Gamma: {gamma}, Delta: {delta}, Theta: {theta}")
+        plt.xlabel("Episode")
+        plt.ylabel("Placed Estimated Sales")
+        plt.grid()
+        plt.savefig(f"./experiments/sales/DoubleDQN_placed_sales_plot_alpha_{alpha}_beta_{beta}_gamma_{gamma}_delta_{delta}_theta{theta}.png")
+        plt.close()
+
+        # Plot loss value
+        plt.plot([r[3] for r in rewards if r[3] is not None])
+        plt.title(f"Loss per episode - Double DQN\nAlpha: {alpha}, Beta: {beta}, Gamma: {gamma}, Delta: {delta}, Theta: {theta}")
+        plt.xlabel("Episode")
+        plt.ylabel("Loss")
+        plt.grid()
+        plt.savefig(f"./experiments/loss/DoubleDQN_loss_plot_alpha_{alpha}_beta_{beta}_gamma_{gamma}_delta_{delta}_theta_{theta}.png")
+        plt.close()
+
+        # Plot epsilon usage
+        plt.plot([r[4] for r in rewards])
+        plt.title(f"Epsilon Usage per episode - Double DQN\nAlpha: {alpha}, Beta: {beta}, Gamma: {gamma}, Delta: {delta}, Theta: {theta}")
+        plt.xlabel("Episode")
+        plt.ylabel("Epsilon Usage")
+        plt.grid()
+        plt.savefig(f"./experiments/epsilon_usage/DoubleDQN_epsilon_usage_plot_alpha_{alpha}_beta_{beta}_gamma_{gamma}_delta_{delta}_theta_{theta}.png")
+        plt.close()

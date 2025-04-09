@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 class AssignmentEnv:
-    def __init__(self, df:list[pd.DataFrame], alpha=10.0, beta=0.5, gamma=0.5, delta=1.0):
+    def __init__(self, df:list[pd.DataFrame], alpha=10.0, beta=0.5, gamma=0.5, delta=1.0, theta = 3.0):
         self.df_length = len(df)
         #print(df[0].describe())
         self.df_iter = 0
@@ -10,9 +10,11 @@ class AssignmentEnv:
         self.beta = beta
         self.gamma = gamma
         self.delta = delta
+        self.theta = theta
         self.dfs = [d.copy().reset_index(drop=True) for d in df]
-        for d in self.dfs:
-            d.loc[:, 'UNDESTIMADAS_NORM'] = d['UNDESTIMADAS_NORM'].apply(lambda x: x if x > 0 else 1)
+        for i, d in enumerate(self.dfs):
+            self.dfs[i] = d.copy()  # Ensure we are working on a copy
+            self.dfs[i].loc[:, 'UNDESTIMADAS_NORM'] = self.dfs[i]['UNDESTIMADAS_NORM'].apply(lambda x: x if x > 0 else 1)
         self.df = self.dfs[self.df_iter]
         self.weight_matrix = np.array([
             [5.5, 4.7, 3.5, 3.0, 2.0, 1.3, 1.0, 1.0, 1.3, 2.0, 3.0, 3.5, 4.7, 5.5, 5.5, 4.7, 3.5, 3.0, 2.0, 1.3, 1.0, 1.0, 1.3, 2.0, 3.0, 3.5, 4.7, 5.5, 5.5, 4.7, 3.5, 3.0, 2.0, 1.3, 1.0, 1.0, 1.3, 2.0, 3.0, 3.5, 4.7, 5.5, 5.5, 4.7, 3.5, 3.0, 2.0, 1.3, 1.0, 1.0, 1.3, 2.0, 3.0, 3.5, 4.7, 5.5, 5.5, 4.7, 3.5, 3.0, 2.0, 1.3, 1.0, 1.0, 1.3, 2.0, 3.0, 3.5, 4.7, 5.5, 5.5, 4.7, 3.5, 3.0, 2.0, 1.3, 1.0, 1.0, 1.3, 2.0, 3.0, 3.5, 4.7, 5.5, 5.5, 4.7, 3.5, 3.0, 2.0, 1.3, 1.0, 1.0, 1.3, 2.0, 3.0, 3.5, 4.7, 5.5, 5.5, 4.7, 3.5, 3.0, 2.0, 1.3, 1.0, 1.0, 1.3, 2.0, 3.0, 3.5, 4.7, 5.5, 5.5, 4.7, 3.5, 3.0, 2.0, 1.3, 1.0, 1.0, 1.3, 2.0, 3.0, 3.5, 4.7, 5.5, 5.5, 4.7, 3.5, 3.0, 2.0, 1.3, 1.0, 1.0, 1.3, 2.0, 3.0, 3.5, 4.7, 5.5],
@@ -80,9 +82,9 @@ class AssignmentEnv:
 
         unplaced_items = self.num_products - placed_items
 
-        reward = self.alpha * weighted_sales - self.beta * collisions - self.gamma * unplaced_items - self.delta * misplaced_penalty
+        reward = ((self.alpha * weighted_sales + self.theta * placed_items) - self.beta * collisions - self.gamma * unplaced_items - self.delta * misplaced_penalty) / self.total_cells
 
-        reward = np.clip(reward, -1000, 500)
+        #reward = np.clip(reward, -1000, 500)
 
         self.last_placed_items = placed_items
         done = True

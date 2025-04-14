@@ -1,5 +1,18 @@
 import numpy as np
 import pandas as pd
+import logging
+
+# Configure logging
+logging.basicConfig(
+    filename='log.txt',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+
+# Replace console.log with logging.info
+def console_log(*args):
+    message = " ".join(map(str, args))
+    logging.info(message)
 
 class AssignmentEnv:
     def __init__(self, df:list[pd.DataFrame], alpha=10.0, beta=0.5, gamma=0.5, delta=1.0, theta = 3.0):
@@ -81,7 +94,7 @@ class AssignmentEnv:
                 misplaced_penalty += 1.0
 
         unplaced_items = self.num_products - placed_items
-
+        console_log(self.num_products, weighted_sales, placed_items, collisions, unplaced_items, misplaced_penalty)
         reward = (
             self.alpha * (weighted_sales / (self.num_products + 1e-6)) +
             self.theta * (placed_items / self.total_cells) -
@@ -90,7 +103,7 @@ class AssignmentEnv:
             self.delta * (misplaced_penalty / self.num_products)
         )
 
-        reward = np.clip(reward, -1.0, 1.0)
+        #reward = np.clip(reward, -1.0, 1.0)
 
         self.last_placed_items = placed_items
         done = True

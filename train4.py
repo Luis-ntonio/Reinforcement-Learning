@@ -40,11 +40,11 @@ def build_index_batch(actions):
 
 
 def train_double_dqn(env: AssignmentEnv, q_network, target_network, num_episodes=1000, gamma=0.99,
-                     lr=5e-5, batch_size=64, buffer_capacity=10000,
-                     epsilon_start=1.0, epsilon_end=0.01, epsilon_decay=0.998,
-                     target_update_freq=20):
+                     lr=1e-5, batch_size=64, buffer_capacity=10000,
+                     epsilon_start=1.0, epsilon_end=0.02, epsilon_decay=0.999,
+                     target_update_freq=30):
 
-    optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr)#, clipnorm=0.001)
     replay_buffer = ReplayBuffer(buffer_capacity)
     rewards_list = []
 
@@ -90,10 +90,10 @@ def train_double_dqn(env: AssignmentEnv, q_network, target_network, num_episodes
             matrix_input_batch = np.array([s[1] for s in states], dtype=np.float32)
             mask_batch = np.array([s[2] for s in states], dtype=np.float32)
 
-            next_product_feats_batch = np.array([s[0] for s in next_states], dtype=np.float32)
+            """next_product_feats_batch = np.array([s[0] for s in next_states], dtype=np.float32)
             next_matrix_input_batch = np.array([s[1] for s in next_states], dtype=np.float32)
             next_mask_batch = np.array([s[2] for s in next_states], dtype=np.float32)
-
+            """
             actions_batch = np.array(actions)
             rewards_batch = np.array(rewards, dtype=np.float32)
             dones_batch = np.array(dones, dtype=np.float32)
@@ -102,44 +102,30 @@ def train_double_dqn(env: AssignmentEnv, q_network, target_network, num_episodes
             dones_batch = tf.expand_dims(dones_batch, axis=-1)
 
             states_input = (product_feats_batch, matrix_input_batch, mask_batch)
-            next_state_input = (next_product_feats_batch, next_matrix_input_batch, next_mask_batch)
+            # next_state_input = (next_product_feats_batch, next_matrix_input_batch, next_mask_batch)
 
             with tf.GradientTape() as tape:
-                _, q_values = q_network(states_input)
-                _, next_q_values = q_network(next_state_input)
-                next_actions = tf.argmax(next_q_values, axis=-1)
+                # Forward pass
+                _, q_values = q_network(states_input)  # (batch, num_products, total_cells)
 
-                _, target_q_values = target_network(next_state_input)
-                num_products = tf.shape(next_actions)[1].numpy()
-                batch_size = tf.shape(next_actions)[0].numpy()
+                # Get Q-values for the chosen actions
+                actions_one_hot = tf.one_hot(actions_batch, env.total_cells)  # (batch, num_products, total_cells)
+                chosen_q = tf.reduce_sum(q_values * actions_one_hot, axis=-1)  # (batch, num_products)
+                chosen_q = tf.clip_by_value(chosen_q, -100.0, 100.0)
+                # Average across products to get a single value per sample
+                avg_q = tf.reduce_mean(chosen_q, axis=-1, keepdims=True)  # (batch, 1)
 
-                batch_idx = tf.range(batch_size, dtype=tf.int32)
-                product_idx = tf.range(num_products, dtype=tf.int32)
-
-                batch_idx = tf.reshape(batch_idx, (-1, 1))
-                batch_idx = tf.tile(batch_idx, [1, num_products])
-
-                product_idx = tf.reshape(product_idx, (1, -1))
-                product_idx = tf.tile(product_idx, [batch_size, 1])
-
-                cell_idx = tf.cast(next_actions, tf.int32)
-                indices = tf.stack([batch_idx, product_idx, cell_idx], axis=-1)
-
-                target_q = tf.gather_nd(target_q_values, indices)
-                target_q = tf.clip_by_value(target_q, -10.0, 10.0)
-
-                actions_one_hot = tf.one_hot(actions_batch, env.total_cells)
-                chosen_q = tf.reduce_sum(q_values * actions_one_hot, axis=-1)
-
-                td_target = rewards_batch + (1.0 - dones_batch) * gamma * target_q
-                loss = tf.reduce_mean(tf.keras.losses.huber(td_target, chosen_q))
+                # TD target is just the episodic reward (already shape (batch, 1))
+                loss = tf.reduce_mean(tf.keras.losses.huber(rewards_batch, avg_q))
                 loss_value = loss.numpy()
+
+
 
             grads = tape.gradient(loss, q_network.trainable_variables)
             optimizer.apply_gradients(zip(grads, q_network.trainable_variables))
 
-        if episode % target_update_freq == 0:
-            target_network.set_weights(q_network.get_weights())
+        """if episode % target_update_freq == 0:
+            target_network.set_weights(q_network.get_weights())"""
 
         epsilon = max(epsilon * epsilon_decay, epsilon_end)
 
@@ -164,11 +150,11 @@ def train_double_dqn(env: AssignmentEnv, q_network, target_network, num_episodes
 import itertools
 from tqdm import tqdm
 
-alpha_vals = [10.0, 50.0, 100.0]
-beta_vals = [0.5, 1.0]
-gamma_vals = [0.5, 1.0]
-delta_vals = [0.5, 1.0]
-theta_vals = [0.2, 0.7, 2.0]
+alpha_vals = [100.0, 50.0, 200.0]
+beta_vals = [2.5, 2.0]
+gamma_vals = [2.5, 3.0]
+delta_vals = [2.5, 4.0]
+theta_vals = [1.2, 2.7, 4.0]
 
 if __name__ == "__main__":
     file_path = 'productos_anaquel.xlsx'
@@ -209,7 +195,7 @@ if __name__ == "__main__":
 
         target_net.set_weights(q_net.get_weights())
 
-        rewards = train_double_dqn(env, q_net, target_net, num_episodes=200)
+        rewards = train_double_dqn(env, q_net, target_net, num_episodes=2000)
 
 
         # Plot rewards

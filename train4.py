@@ -106,7 +106,7 @@ def train_double_dqn(env: AssignmentEnv, q_network, target_network, num_episodes
 
             with tf.GradientTape() as tape:
                 # Forward pass
-                _, q_values = q_network(states_input)  # (batch, num_products, total_cells)
+                _, q_values = q_network(states_input, training = True)  # (batch, num_products, total_cells)
 
                 # Get Q-values for the chosen actions
                 actions_one_hot = tf.one_hot(actions_batch, env.total_cells)  # (batch, num_products, total_cells)

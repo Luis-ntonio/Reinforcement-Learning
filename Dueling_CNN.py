@@ -2,7 +2,7 @@ import tensorflow as tf
 from tensorflow.keras import layers, models
 
 class AssignmentCNNModel(tf.keras.Model):
-    def __init__(self, rows, cols, product_feature_dim, matrix_channels, embed_dim=128, dropout_rate=0.7):
+    def __init__(self, rows, cols, product_feature_dim, matrix_channels, embed_dim=128, dropout_rate=0.8):
         super(AssignmentCNNModel, self).__init__()
         self.rows = rows
         self.cols = cols
@@ -28,7 +28,7 @@ class AssignmentCNNModel(tf.keras.Model):
             layers.Dropout(dropout_rate),
         ])
 
-        self.cell_embedding = layers.Dense(embed_dim, activation='relu')
+        self.cell_embedding = layers.Dense(embed_dim, activation=None)
 
         # Product embedding
         self.product_embedding = models.Sequential([

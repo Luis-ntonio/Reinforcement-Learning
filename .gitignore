@@ -3,3 +3,8 @@
 *.jpeg
 *.gif
 *.bmp
+*.h5
+
+__pycache__
+
+.env

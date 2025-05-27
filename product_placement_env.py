@@ -3,17 +3,20 @@ import gym
 from gym import spaces
 
 class ProductPlacementEnv(gym.Env):
-    def __init__(self, products, rows=20, cols=20):
+    def __init__(self, products, ids, rows=7, cols=14):
         super(ProductPlacementEnv, self).__init__()
+        self.ids = ids
         self.rows = rows
         self.cols = cols
         self.total_cells = rows * cols
         self.products = products
         self.current_index = 0
         self.grid = np.zeros((rows, cols), dtype=np.float32)  # 0: empty, >0: occupied with product quantity
+        self.output_grid = np.zeros((rows, cols), dtype=np.float32)  # 0: empty, >0: occupied with product quantity
         
+        print(f"Product IDs: {self.ids}")
         # Center points for different types of distance calculations
-        self.center_row = rows // 2
+        self.center_row = 1
         self.center_col = cols // 2
         
         # Track the cumulative value of products placed
@@ -64,6 +67,7 @@ class ProductPlacementEnv(gym.Env):
     
     def reset(self):
         self.grid = np.zeros((self.rows, self.cols), dtype=np.float32)
+        self.output_grid = np.zeros((self.rows, self.cols), dtype=np.float32)
         self.current_index = 0
         self.total_value_placed = 0
         self.placement_history = []
@@ -107,201 +111,6 @@ class ProductPlacementEnv(gym.Env):
 
         # como debug, devolvemos solo este componente
         return reward, {'center_only': reward}
-
-    def _calculate_improved_rewards(self, row, col, quantity, volume):
-        """Calculate more informative and stable rewards"""
-        rewards = {}
-        
-        # === Base placement reward ===
-        # Simple reward for successfully placing a product
-        rewards['base_placement'] = 0.1
-        
-        # === Distance-based reward component ===
-        # Calculate Euclidean distance to center (optimal distance is near center)
-        dist_to_center = np.sqrt((row - self.center_row)**2 + (col - self.center_col)**2)
-        max_dist = np.sqrt((self.rows)**2 + (self.cols)**2) / 2
-        
-        # Normalize and invert (closer = higher reward)
-        distance_score = 1.0 - (dist_to_center / max_dist)
-        rewards['center_proximity'] = (1 + distance_score * 2)**2
-        
-        # === Product value reward ===
-        # Higher value/quantity products should get better positions
-        value_ratio = quantity / max(1.0, self.max_possible_value)
-        rewards['value'] = value_ratio * 0.5
-        
-        # === Adjacency and grouping rewards ===
-        adjacency_score = 0
-        current_category = self.product_categories.get(self.current_index, '')
-        
-        # Check all surrounding cells (including diagonals)
-        directions = [
-            (-1, -1), (-1, 0), (-1, 1),
-            (0, -1),           (0, 1),
-            (1, -1),  (1, 0),  (1, 1)
-        ]
-        
-        similar_adjacent = 0
-        different_adjacent = 0
-        empty_adjacent = 0
-        
-        for dr, dc in directions:
-            adj_row, adj_col = row + dr, col + dc
-            
-            # Skip if outside grid
-            if (adj_row < 0 or adj_row >= self.rows or 
-                adj_col < 0 or adj_col >= self.cols):
-                continue
-                
-            if self.grid[adj_row, adj_col] == 0:
-                empty_adjacent += 1
-                continue
-            
-            # Find which product is in this cell
-            product_idx = None
-            for placement in self.placement_history:
-                if placement['position'] == (adj_row, adj_col):
-                    product_idx = placement['product_idx']
-                    break
-            
-            if product_idx is None:
-                continue
-                
-            # Check if adjacent product is in same category
-            if self.product_categories.get(product_idx, '') == current_category:
-                similar_adjacent += 1
-            else:
-                different_adjacent += 0.5
-        
-        # Calculate grouping score - reward similar products being adjacent
-        if similar_adjacent > 0:
-            adjacency_score = similar_adjacent * 0.3
-        
-        # Add small reward for any adjacency (better than floating alone)
-        if different_adjacent > 0:
-            adjacency_score += different_adjacent * 0.1
-        
-        # Slight preference for having some empty adjacent cells (accessibility)
-        if empty_adjacent > 0:
-            adjacency_score += min(empty_adjacent, 3) * 0.05
-            
-        rewards['adjacency'] = 0 #adjacency_score
-        
-        # === Layout balance reward ===
-        # Calculate row and column density
-        row_density = np.sum(self.grid > 0, axis=1) / self.cols
-        col_density = np.sum(self.grid > 0, axis=0) / self.rows
-        
-        # Calculate variance (lower variance = more balanced layout)
-        row_variance = np.var(row_density)
-        col_variance = np.var(col_density)
-        
-        # Higher reward for more balanced layout
-        balance_score = 0.3 * np.exp(-2 * row_variance) + 0.3 * np.exp(-2 * col_variance)
-        rewards['balance'] = 0 #balance_score
-        
-        # === Visual appeal reward - discourage zigzag patterns ===
-        # Check if this placement creates a visually pleasing pattern
-        visual_score = 0
-        
-        # Reward straight lines and patterns
-        # Check if this forms part of a horizontal line
-        if col > 0 and col < self.cols - 1:
-            if self.grid[row, col-1] > 0 and self.grid[row, col+1] > 0:
-                visual_score += 0.2
-        
-        # Check if this forms part of a vertical line
-        if row > 0 and row < self.rows - 1:
-            if self.grid[row-1, col] > 0 and self.grid[row+1, col] > 0:
-                visual_score += 0.2
-        
-        rewards['visual'] = 0#visual_score
-        
-        # === Progress reward ===
-        # Reward progress through product placement
-        progress = self.current_index / len(self.products)
-        rewards['progress'] = progress * 0.2
-        
-        # Sum up all reward components
-        total_reward = sum(rewards.values())
-        return total_reward, rewards
-
-    def _calculate_proximity_reward(self, row, col):
-        """Calculate reward based on proximity to center and similar products"""
-        # Distance to center reward component
-        dist_to_center = np.sqrt((row - self.center_row)**2 + (col - self.center_col)**2)
-        max_dist = np.sqrt((self.rows)**2 + (self.cols)**2) / 2  # Maximum possible distance
-        center_proximity = 1.0 - (dist_to_center / max_dist)  # Higher when closer to center
-        
-        # Product adjacency reward component - encourage grouping similar products
-        adjacency_reward = 0
-        current_category = self.product_categories.get(self.current_index, '')
-        
-        # Check adjacent cells (up, down, left, right)
-        adjacency_directions = [
-            (row-1, col), (row+1, col), 
-            (row, col-1), (row, col+1)
-        ]
-        
-        similar_adjacent = 0
-        different_adjacent = 0
-        
-        for adj_row, adj_col in adjacency_directions:
-            # Skip if outside grid
-            if (adj_row < 0 or adj_row >= self.rows or 
-                adj_col < 0 or adj_col >= self.cols):
-                continue
-                
-            # Skip empty cells
-            if self.grid[adj_row, adj_col] == 0:
-                continue
-            
-            # Find which product is in this cell
-            product_idx = None
-            for place_idx, placement in enumerate(self.placement_history):
-                if placement['position'] == (adj_row, adj_col):
-                    product_idx = placement['product_idx']
-                    break
-            
-            # Skip if we can't determine which product
-            if product_idx is None:
-                continue
-                
-            # Check if adjacent product is in same category
-            if self.product_categories.get(product_idx, '') == current_category:
-                similar_adjacent += 1
-            else:
-                different_adjacent += 0.2  # Small reward for any adjacency
-        
-        # Calculate adjacency reward - more reward for similar products nearby
-        if similar_adjacent > 0 or different_adjacent > 0:
-            adjacency_reward = (similar_adjacent * 0.3) + (different_adjacent * 0.1)
-        
-        # Combine rewards (center proximity has higher weight)
-        return (center_proximity * 0.7) + (adjacency_reward * 0.3)
-    
-    def _calculate_balance_reward(self):
-        """Calculate reward for balanced shelf usage"""
-        if self.current_index == 0:
-            return 0.0
-            
-        # Calculate how evenly distributed products are across the grid
-        occupied_cells = np.sum(self.grid > 0)
-        if occupied_cells == 0:
-            return 0.0
-            
-        # Calculate row and column usage
-        row_usage = np.sum(self.grid > 0, axis=1) / self.cols  # Usage per row
-        col_usage = np.sum(self.grid > 0, axis=0) / self.rows  # Usage per column
-        
-        # Calculate variance of usage (lower is better - more balanced)
-        row_variance = np.var(row_usage)
-        col_variance = np.var(col_usage)
-        
-        # Convert to a reward (higher when variance is lower)
-        balance_reward = 0.5 * (1.0 / (1.0 + row_variance)) + 0.5 * (1.0 / (1.0 + col_variance))
-        
-        return min(0.5, balance_reward)  # Cap at 0.5
     
     def step(self, action):
         row, col = divmod(action, self.cols)
@@ -321,9 +130,11 @@ class ProductPlacementEnv(gym.Env):
             producto = self.products[self.current_index]
             quantity = producto['UNDESTIMADAS']
             volume = producto['VOLUMEN']
+            ids = self.ids[self.current_index]
             
             # Mark cell as occupied with product quantity
             self.grid[row, col] = quantity
+            self.output_grid[row, col] = ids
             
             # Track placement for adjacency calculations
             self.placement_history.append({
@@ -333,7 +144,7 @@ class ProductPlacementEnv(gym.Env):
                 'volume': volume
             })
             
-            self.total_value_placed += quantity
+            self.total_value_placed += quantity * 2
             
             """# Calculate proximity-based reward
             proximity_reward = self._calculate_proximity_reward(row, col)
@@ -357,28 +168,6 @@ class ProductPlacementEnv(gym.Env):
             # Move to next product
             self.current_index += 1
         
-        # Check if we've placed all products
-        done = self.current_index >= len(self.products)
-        
-        # Additional completion reward
-        """if done:
-            # Calculate final balance as part of completion bonus
-            final_balance = self._calculate_balance_reward() * 2
-            
-            # Count empty spaces as measure of efficiency
-            occupied = np.sum(self.grid > 0)
-            total_cells = self.rows * self.cols
-            occupancy_rate = occupied / total_cells
-            
-            # Prefer higher occupancy but not too crowded (sweet spot around 0.7-0.8)
-            if occupancy_rate < 0.5:
-                efficiency_bonus = occupancy_rate  # Linear up to 0.5
-            elif occupancy_rate <= 0.8:
-                efficiency_bonus = 0.5 + (occupancy_rate - 0.5) * 2  # Steeper slope to peak at 0.8
-            else:
-                efficiency_bonus = 1.0 - (occupancy_rate - 0.8) * 5  # Penalty for overcrowding
-            completion_reward = 3.0 + final_balance + efficiency_bonus
-            reward += completion_reward"""
 
         done = (self.current_index >= len(self.products))
         # bonus si terminas de colocar todo

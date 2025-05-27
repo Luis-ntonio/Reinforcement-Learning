@@ -133,11 +133,12 @@ def get_data():
     df_all = pd.concat(df_list, ignore_index=True)
     df_all = df_all[df_all['ANAQUEL'].str.startswith('C', na=False)]
     df_all = df_all[df_all['CAMPA'] == 201416]
-    
+    print(df_all.head())
     # Data cleaning and normalization
     df_all['UNDESTIMADAS'] = df_all['UNDESTIMADAS'].apply(lambda x: max(x, 1))  # Ensure positive
     df_all = df_all.drop_duplicates(subset='PRODUCTO')
-    df_all = df_all[['ALTO', 'ANCHO', 'LARGO', 'VOLUMEN', 'PESO', "UNDESTIMADAS"]]
+    df_all = df_all[['PRODUCTO','ALTO', 'ANCHO', 'LARGO', 'VOLUMEN', 'PESO', "UNDESTIMADAS"]]
+    
     
     # Robust normalization: use min-max but handle outliers
     for col in ['ALTO', 'ANCHO', 'LARGO', 'VOLUMEN', 'PESO', 'UNDESTIMADAS']:
@@ -158,7 +159,7 @@ def get_data():
 def create_improved_model():
     """Create a more stable CNN model with batch normalization"""
     # Input layers
-    grid_input = tf.keras.layers.Input(shape=(20, 20, 1))
+    grid_input = tf.keras.layers.Input(shape=(7, 14, 1))
     product_input = tf.keras.layers.Input(shape=(6,))
     
     # Grid processing branch with batch normalization
@@ -185,7 +186,7 @@ def create_improved_model():
     z = tf.keras.layers.Activation('relu')(z)
     z = tf.keras.layers.Dense(128)(z)
     z = tf.keras.layers.Activation('relu')(z)
-    output = tf.keras.layers.Dense(400)(z)  # No activation for Q-values
+    output = tf.keras.layers.Dense(98)(z)  # No activation for Q-values
     
     # Create model
     model = tf.keras.Model(inputs=[grid_input, product_input], outputs=output)
@@ -239,8 +240,10 @@ if __name__ == "__main__":
     # === Training loop ===
     for ep in range(EPISODES):
         grupo_idx = np.random.randint(0, len(grupos_df))
-        productos = grupos_df[grupo_idx].to_dict('records')
-        env = ProductPlacementEnv(productos)
+        productos = grupos_df[grupo_idx]
+        ids = productos[['PRODUCTO']].to_dict('records')
+        productos = productos[['ALTO', 'ANCHO', 'LARGO', 'VOLUMEN', 'PESO', "UNDESTIMADAS"]].to_dict('records')
+        env = ProductPlacementEnv(productos, ids)
         
         state = env.reset()
         episode_reward = 0

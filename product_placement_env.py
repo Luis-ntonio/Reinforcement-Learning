@@ -14,7 +14,7 @@ class ProductPlacementEnv(gym.Env):
         self.grid = np.zeros((rows, cols), dtype=np.float32)  # 0: empty, >0: occupied with product quantity
         self.output_grid = np.zeros((rows, cols), dtype=np.float32)  # 0: empty, >0: occupied with product quantity
         
-        print(f"Product IDs: {self.ids}")
+        # print(f"Product IDs: {self.ids}")
         # Center points for different types of distance calculations
         self.center_row = 1
         self.center_col = cols // 2
@@ -130,7 +130,7 @@ class ProductPlacementEnv(gym.Env):
             producto = self.products[self.current_index]
             quantity = producto['UNDESTIMADAS']
             volume = producto['VOLUMEN']
-            ids = self.ids[self.current_index]
+            ids = self.ids[self.current_index]['PRODUCTO']
             
             # Mark cell as occupied with product quantity
             self.grid[row, col] = quantity
@@ -184,6 +184,25 @@ class ProductPlacementEnv(gym.Env):
         np.set_printoptions(precision=2, suppress=True, linewidth=200)
         print("\nCurrent grid state:")
         print(self.grid)
+        
+        if self.current_index < len(self.products):
+            print(f"\nNext product: {self.current_index + 1}/{len(self.products)}")
+            p = self.products[self.current_index]
+            print(f"Quantity: {p['UNDESTIMADAS']:.2f}, Volume: {p['VOLUMEN']:.2f}")
+            print(f"Dimensions: {p['ALTO']:.2f}x{p['ANCHO']:.2f}x{p['LARGO']:.2f}, Weight: {p['PESO']:.2f}")
+        else:
+            print("\nAll products placed!")
+            
+        # Display some metrics about the current placement
+        occupied = np.sum(self.grid > 0)
+        print(f"Occupied cells: {occupied}/{self.rows * self.cols} ({occupied/(self.rows * self.cols):.1%})")
+        print(f"Value placed: {self.total_value_placed:.2f}/{self.max_possible_value:.2f} ({self.total_value_placed/self.max_possible_value:.1%})")
+
+    def last_render(self, mode='human'):
+        """Display the current grid state"""
+        np.set_printoptions(precision=2, suppress=True, linewidth=200, formatter={'float': lambda x: f"{x:.2f}"})
+        print("\nCurrent grid state:")
+        print(self.output_grid)
         
         if self.current_index < len(self.products):
             print(f"\nNext product: {self.current_index + 1}/{len(self.products)}")

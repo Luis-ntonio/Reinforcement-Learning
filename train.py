@@ -90,8 +90,10 @@ def evaluate_agent(agent, grupos_df, num_eval=3):
     
     for _ in range(num_eval):
         grupo_idx = np.random.randint(0, len(grupos_df))
-        productos = grupos_df[grupo_idx].to_dict('records')
-        env = ProductPlacementEnv(productos)
+        productos = grupos_df[grupo_idx]
+        ids = productos[['PRODUCTO']].to_dict('records')
+        productos = productos[['ALTO', 'ANCHO', 'LARGO', 'VOLUMEN', 'PESO', "UNDESTIMADAS"]].to_dict('records')
+        env = ProductPlacementEnv(productos, ids)
         
         state = env.reset()
         episode_reward = 0
@@ -133,7 +135,7 @@ def get_data():
     df_all = pd.concat(df_list, ignore_index=True)
     df_all = df_all[df_all['ANAQUEL'].str.startswith('C', na=False)]
     df_all = df_all[df_all['CAMPA'] == 201416]
-    print(df_all.head())
+    #print(df_all.head())
     # Data cleaning and normalization
     df_all['UNDESTIMADAS'] = df_all['UNDESTIMADAS'].apply(lambda x: max(x, 1))  # Ensure positive
     df_all = df_all.drop_duplicates(subset='PRODUCTO')
@@ -152,7 +154,7 @@ def get_data():
         # Apply min-max normalization
         df_all[col] = (df_all[col] - df_all[col].min()) / (df_all[col].max() - df_all[col].min() + 1e-8)
     
-    print(df_all.describe())
+    # print(df_all.describe())
     df_all.reset_index(drop=True, inplace=True)
     return df_all
 
@@ -341,8 +343,10 @@ if __name__ == "__main__":
     # Final comprehensive evaluation
     final_rewards = []
     for grupo_idx in range(len(grupos_df)):
-        productos = grupos_df[grupo_idx].to_dict('records')
-        env = ProductPlacementEnv(productos)
+        productos = grupos_df[grupo_idx]
+        ids = productos[['PRODUCTO']].to_dict('records')
+        productos = productos[['ALTO', 'ANCHO', 'LARGO', 'VOLUMEN', 'PESO', "UNDESTIMADAS"]].to_dict('records')
+        env = ProductPlacementEnv(productos, ids)
         
         state = env.reset()
         episode_reward = 0
@@ -403,3 +407,4 @@ if __name__ == "__main__":
     plt.savefig('results/final_training_summary.png')
     
     print("Training complete!")
+    print(env.last_render())

@@ -1,33 +1,37 @@
 import tensorflow as tf
-from tensorflow.keras import layers
 
-class CNNPlacementQNetwork(tf.keras.Model):
-    def __init__(self, grid_shape=(20, 20, 1), product_dim=6, output_dim=98):
-        super().__init__()
-
-        self.grid_conv = tf.keras.Sequential([
-            layers.Input(shape=grid_shape),
-            layers.Conv2D(16, kernel_size=3, activation='relu', padding='same'),
-            layers.Conv2D(32, kernel_size=3, activation='relu', padding='same'),
-            layers.Flatten()
-        ])
-
-
-        self.product_fc = tf.keras.Sequential([
-            layers.Input(shape=(product_dim,)),
-            layers.Dense(32, activation='relu'),
-            layers.Dense(64, activation='relu')
-        ])
-
-        self.output_head = tf.keras.Sequential([
-            layers.Dense(256, activation='relu'),
-            layers.Dense(output_dim)
-        ])
-
-    def call(self, inputs, training=True):
-        grid_input, product_input = inputs
-        grid_feat = self.grid_conv(grid_input, training=training)
-        prod_feat = self.product_fc(product_input, training=training)
-        combined = tf.concat([grid_feat, prod_feat], axis=-1)
-        q_values = self.output_head(combined, training=training)
-        return q_values
+def create_improved_model():
+    """Create a more stable CNN model with batch normalization"""
+    # Input layers
+    grid_input = tf.keras.layers.Input(shape=(7, 14, 1))
+    product_input = tf.keras.layers.Input(shape=(6,))
+    
+    # Grid processing branch with batch normalization
+    x = tf.keras.layers.Conv2D(32, (3, 3), padding='same')(grid_input)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation('relu')(x)
+    x = tf.keras.layers.Conv2D(64, (3, 3), padding='same')(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation('relu')(x)
+    grid_features = tf.keras.layers.Flatten()(x)
+    
+    # Product feature processing branch
+    y = tf.keras.layers.Dense(32)(product_input)
+    y = tf.keras.layers.BatchNormalization()(y)
+    y = tf.keras.layers.Activation('relu')(y)
+    y = tf.keras.layers.Dense(64)(y)
+    y = tf.keras.layers.BatchNormalization()(y)
+    product_features = tf.keras.layers.Activation('relu')(y)
+    
+    # Combined processing
+    combined = tf.keras.layers.Concatenate()([grid_features, product_features])
+    z = tf.keras.layers.Dense(256)(combined)
+    z = tf.keras.layers.BatchNormalization()(z)
+    z = tf.keras.layers.Activation('relu')(z)
+    z = tf.keras.layers.Dense(128)(z)
+    z = tf.keras.layers.Activation('relu')(z)
+    output = tf.keras.layers.Dense(98)(z)  # No activation for Q-values
+    
+    # Create model
+    model = tf.keras.Model(inputs=[grid_input, product_input], outputs=output)
+    return model
